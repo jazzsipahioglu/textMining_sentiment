@@ -1,0 +1,129 @@
+import snscrape as snscrape
+import spacy as spacy
+from pip._internal.cli.cmdoptions import python
+
+pip install snscrape
+import snscrape.modules.twitter as sntwitter
+import pandas as pd
+import progressbar
+from time import sleep
+from datetime import datetime
+import os
+
+movie_dict = {'Turkish carpet': ['turkish carpet turkish rug Turkish carpet Turkish rug since:2022-01-01 until:2022-12-31', 200000]}
+today = datetime.today().strftime('%Y%m%d')[2:]+'_'
+for index, movie_name in enumerate(movie_dict):
+    print(movie_name, '%')
+    tweets_list1 = []
+    bar = progressbar.ProgressBar(maxval=movie_dict[movie_name][1]+2, widgets=[progressbar.Bar('=', '[', ']'), ' ', progressbar.Percentage()])
+    bar.start()
+    for i,tweet in enumerate(sntwitter.TwitterSearchScraper(f'{movie_dict[movie_name][0]}').get_items()): #declare a username
+        bar.update(i+1)
+        if i>movie_dict[movie_name][1]: #number of tweets you want to scrape
+            break
+        #print(movie_name, i, tweet)
+        tweets_list1.append([tweet.date, tweet.id, tweet.content, tweet.user.username]) #declare the attributes to be returned
+    tweets_df1 = pd.DataFrame(tweets_list1, columns=['Datetime', 'Tweet Id', 'Text', 'Username'])
+
+    tweets_df1[['Datetime', 'Text']].to_csv(f'{index}.csv')
+    bar.finish()
+
+    import pandas as pd
+
+    # when importing empty rows, they are transformed to nan, so we need to drop them here
+    df = pd.read_csv('download/merged.csv')[['text']]
+    df
+
+    # get rid of links and hashtags
+    df["text"] = df["text"].apply(lambda x: ' '.join(
+        [s for s in x.split(' ') if s.find('@') == -1 and s.find('www') == -1 and s.find('https') == -1]))
+
+    # get rid of non-ascii characters
+    df = df.replace(r'\W+', ' ', regex=True)
+    df
+
+pip install spacytexblob == 3.0.1
+pip install spacy == 3.2.1
+python - m textblob.download_corpora
+python - m spacy download en_core_web_sm
+
+import spacy
+from spacytextblob.spacytextblob import SpacyTextBlob
+
+nlp = spacy.load('en_core_web_sm')
+nlp.add_pipe("spacytextblob")
+
+df['sentiment'] = df['text'].apply(lambda x : nlp(x)._.polarity)
+df_sentiment = df.sort_values('sentiment').reset_index(drop=True)
+df_sentiment
+
+import re
+import nltk
+
+nltk.download('wordnet')
+nltk.download('stopwords')
+from nltk.tokenize import RegexpTokenizer
+from nltk.stem import WordNetLemmatizer, PorterStemmer
+from nltk.corpus import stopwords
+
+lemmatizer = WordNetLemmatizer()
+stemmer = PorterStemmer()
+
+# adding a counter to check the progress of the algo while it runs
+global counter
+counter = 0
+
+
+def preprocess(sentence, stemming=False, lemmatizing=False):
+    global counter
+    counter += 1
+    if counter % 100 == 0:
+        pass
+        # print(counter)
+
+    # clean as much as possible, but not apply strong editing to the text, yet
+    sentence = str(sentence)
+    tokenizer = RegexpTokenizer(r'\w+')
+
+    sentence = sentence.lower()
+    sentence = sentence.replace('{html}', "")
+    cleanr = re.compile('<.*?>')
+    cleantext = re.sub(cleanr, '', sentence)
+    rem_url = re.sub(r'http\S+', '', cleantext)
+    rem_num = re.sub('[0-9]+', '', rem_url)
+    tokens = tokenizer.tokenize(rem_num)
+
+    filtered_words = [w for w in tokens if len(w) > 2 if not w in stopwords.words('english')]
+
+    if stemming == True and lemmatizing == False:
+        stem_words = [stemmer.stem(w) for w in filtered_words]
+        return " ".join(stem_words)
+
+    if stemming == False and lemmatizing == True:
+        lemma_words = [lemmatizer.lemmatize(w) for w in filtered_words]
+        return " ".join(lemma_words)
+
+    if stemming == True and lemmatizing == True:
+        stem_words = [stemmer.stem(w) for w in filtered_words]
+        lemma_words = [lemmatizer.lemmatize(w) for w in stem_words]
+        return " ".join(lemma_words)
+
+    # at the end of the algo we return filtered words
+    return " ".join(filtered_words)
+
+
+# preprocess the sentiment text
+df_sentiment['text'] = df_sentiment['text'].apply(lambda x: preprocess(x, stemming=False, lemmatizing=True))
+df_sentiment
+
+df_neg = df_sentiment[df_sentiment['sentiment'] < 0]
+df_pos = df_sentiment[df_sentiment['sentiment'] > 0]
+
+print(len(df_neg))
+print(len(df_pos))
+
+positive_words = pd.DataFrame([dict(Counter(' '.join(df_pos['text'].values.tolist()).split(' ')))]).T.sort_values(0, ascending=False)[0:100].index
+
+negative_words = pd.DataFrame([dict(Counter(' '.join(df_neg['text'].values.tolist()).split(' ')))]).T.sort_values(0, ascending=False)[0:100].index
+
+
